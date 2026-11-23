@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>3D 멀티플레이 포켓볼 (8-Ball)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    body {
+      background: #0b0e14;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      height: 100dvh;
+      width: 100vw;
+      touch-action: none;
+    }
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 로비 모달 (멀티플레이 방 생성/참가) */
+    .lobby-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(8, 11, 18, 0.86);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 16px;
+    }
+    .lobby-card {
+      width: 100%;
+      max-width: 380px;
+      background: #151c2c;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 20px;
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+    .lobby-title {
+      text-align: center;
+      font-size: 22px;
+      font-weight: 900;
+      color: #38bdf8;
+    }
+    .lobby-sub {
+      text-align: center;
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: -10px;
+    }
+    .lobby-section {
+      background: #0f1522;
+      border: 1px solid #1e293b;
+      border-radius: 14px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #cbd5e1;
+    }
+    .code-display {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #1e293b;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-family: monospace;
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: 3px;
+      color: #38bdf8;
+    }
+    .join-row {
+      display: flex;
+      gap: 8px;
+    }
+    input[type="text"] {
+      flex: 1;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      outline: none;
+    }
+    input[type="text"]:focus { border-color: #38bdf8; }
+    .lobby-status {
+      text-align: center;
+      font-size: 12px;
+      color: #fbbf24;
+      min-height: 16px;
+    }
+
+    /* 상단 HUD */
+    .hud-top {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 24px);
+      max-width: 720px;
+      background: rgba(18, 24, 38, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 10;
+    }
+    .players-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .player-badge {
+      flex: 1;
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 6px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      transition: all 0.2s;
+    }
+    .player-badge.active-turn {
+      border-color: #38bdf8;
+      background: rgba(56, 189, 248, 0.14);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+    }
+    .player-badge.right { text-align: right; }
+    .p-name {
+      font-size: 12px;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+    .p-group {
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 600;
+    }
+    .turn-center {
+      text-align: center;
+      min-width: 110px;
+    }
+    .turn-pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 800;
+      background: #1e293b;
+      color: #38bdf8;
+    }
+    .turn-pill.my-turn {
+      background: #22c55e;
+      color: #052e16;
+    }
+    .pocketed-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-top: 6px;
+      min-height: 24px;
+    }
+    .pocketed-list {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .ball-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      font-size: 9px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      text-shadow: 0 1px 2px #000;
+      border: 1px solid rgba(255,255,255,0.45);
+    }
+    .room-tag {
+      font-size: 11px;
+      color: #64748b;
+      font-family: monospace;
+    }
+
+    /* 하단 조작 패널 */
+    .hud-bottom {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 24px);
+      max-width: 560px;
+      background: rgba(18, 24, 38, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 10;
+    }
+    .shot-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .power-bar-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .power-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 700;
+    }
+    .power-track {
+      width: 100%;
+      height: 10px;
+      background: #1e293b;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .power-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #22c55e, #eab308, #ef4444);
+      transition: width 0.05s;
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+    button {
+      background: #1e293b;
+      color: #f8fafc;
+      border: 1px solid #334155;
+      padding: 9px 13px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button.primary {
+      background: #38bdf8;
+      color: #0f172a;
+      border-color: #38bdf8;
+    }
+    button.success {
+      background: #22c55e;
+      color: #052e16;
+      border-color: #22c55e;
+    }
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    button:active:not(:disabled) { transform: scale(0.96); }
+
+    /* 중앙 이벤트 배너 */
+    .center-banner {
+      position: fixed;
+      top: 42%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.85);
+      background: rgba(15, 23, 42, 0.92);
+      border: 2px solid #38bdf8;
+      padding: 14px 26px;
+      border-radius: 16px;
+      font-size: 22px;
+      font-weight: 900;
+      color: #f8fafc;
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: all 0.25s ease;
+      z-index: 30;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.7);
+    }
+    .center-banner.show {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+
+  <!-- 멀티플레이 로비 -->
+  <div class="lobby-overlay" id="lobbyOverlay">
+    <div class="lobby-card">
+      <div class="lobby-title">🎱 3D POOL ONLINE</div>
+      <div class="lobby-sub">친구와 실시간 1:1 8볼 대결</div>
+
+      <div class="lobby-section">
+        <div class="section-label">1. 방 만들기 (친구 초대)</div>
+        <div class="code-display">
+          <span id="myRoomCode">----</span>
+          <button id="copyCodeBtn" class="primary" style="padding: 6px 10px;">복사</button>
+        </div>
+        <div style="font-size: 11px; color: #64748b;">위 4자리 코드를 친구에게 알려주면 자동으로 시작됩니다.</div>
+      </div>
+
+      <div class="lobby-section">
+        <div class="section-label">2. 친구 방 들어가기</div>
+        <div class="join-row">
+          <input type="text" id="joinCodeInput" maxlength="4" placeholder="코드 4자리" />
+          <button id="joinBtn" class="success">입장</button>
+        </div>
+      </div>
+
+      <div class="lobby-status" id="lobbyStatus">서버에 연결 중...</div>
+      <button id="soloPracticeBtn">혼자 연습 모드로 먼저 치기</button>
+    </div>
+  </div>
+
+  <!-- 상단 HUD -->
+  <div class="hud-top">
+    <div class="players-bar">
+      <div class="player-badge" id="p1Badge">
+        <div class="p-name" id="p1Name">1P (방장)</div>
+        <div class="p-group" id="p1Group">배정 전</div>
+      </div>
+      <div class="turn-center">
+        <div class="turn-pill" id="turnPill">대기 중</div>
+      </div>
+      <div class="player-badge right" id="p2Badge">
+        <div class="p-name" id="p2Name">2P (상대)</div>
+        <div class="p-group" id="p2Group">배정 전</div>
+      </div>
+    </div>
+    <div class="pocketed-row">
+      <div class="pocketed-list" id="pocketedList"></div>
+      <div class="room-tag" id="roomTag">SOLO</div>
+    </div>
+  </div>
+
+  <div class="center-banner" id="centerBanner">MY TURN!</div>
+
+  <!-- 하단 조작 패널 -->
+  <div class="hud-bottom">
+    <div class="shot-controls">
+      <div class="power-bar-wrap">
+        <div class="power-label">
+          <span id="controlGuide">좌우 드래그: 조준 | 아래로 당기기: 파워</span>
+          <span id="powerValue">0%</span>
+        </div>
+        <div class="power-track">
+          <div class="power-fill" id="powerFill"></div>
+        </div>
+      </div>
+      <div class="btn-group">
+        <button id="camToggleBtn">탑뷰</button>
+        <button id="rematchBtn" class="primary" style="display:none;">재대결</button>
+        <button id="lobbyBtn">로비</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Three.js & PeerJS CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+  <script>
+  (() => {
+    // UI 요소 참조
+    const container = document.getElementById('canvas-container');
+    const lobbyOverlay = document.getElementById('lobbyOverlay');
+    const myRoomCodeEl = document.getElementById('myRoomCode');
+    const copyCodeBtn = document.getElementById('copyCodeBtn');
+    const joinCodeInput = document.getElementById('joinCodeInput');
+    const joinBtn = document.getElementById('joinBtn');
+    const lobbyStatus = document.getElementById('lobbyStatus');
+    const soloPracticeBtn = document.getElementById('soloPracticeBtn');
+
+    const p1Badge = document.getElementById('p1Badge');
+    const p2Badge = document.getElementById('p2Badge');
+    const p1NameEl = document.getElementById('p1Name');
+    const p2NameEl = document.getElementById('p2Name');
+    const p1GroupEl = document.getElementById('p1Group');
+    const p2GroupEl = document.getElementById('p2Group');
+    const turnPill = document.getElementById('turnPill');
+    const pocketedList = document.getElementById('pocketedList');
+    const roomTag = document.getElementById('roomTag');
+    const centerBanner = document.getElementById('centerBanner');
+    const controlGuide = document.getElementById('controlGuide');
+    const powerFill = document.getElementById('powerFill');
+    const powerValue = document.getElementById('powerValue');
+    const camToggleBtn = document.getElementById('camToggleBtn');
+    const rematchBtn = document.getElementById('rematchBtn');
+    const lobbyBtn = document.getElementById('lobbyBtn');
+
+    // 멀티플레이 상태 변수
+    const ROOM_PREFIX = 'POOL3D-';
+    let peer = null;
+    let conn = null;
+    let isMultiplayer = false;
+    let myRole = 'P1'; // 'P1' (Host) 또는 'P2' (Guest)
+    let currentTurn = 'P1';
+    let playerGroups = { P1: null, P2: null }; // 'SOLID' (1~7) | 'STRIPE' (9~15)
+    let turnPocketedBalls = [];
+    let cueBallPocketedThisTurn = false;
+    let gameOver = false;
+    let lastAimSyncTime = 0;
+
+    // 당구대 물리 상수
+    const TABLE_W = 10;
+    const TABLE_L = 20;
+    const BALL_R = 0.34;
+    const POCKET_R = 0.68;
+
+    // Three.js 씬 설정
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b0f19);
+    scene.fog = new THREE.FogExp2(0x0b0f19, 0.018);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 120);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    // 조명
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const spot1 = new THREE.SpotLight(0xfff8e7, 1.1);
+    spot1.position.set(0, 14, -4);
+    spot1.angle = Math.PI / 3;
+    spot1.penumbra = 0.4;
+    spot1.castShadow = true;
+    scene.add(spot1);
+
+    const spot2 = new THREE.SpotLight(0xfff8e7, 1.1);
+    spot2.position.set(0, 14, 4);
+    spot2.angle = Math.PI / 3;
+    spot2.penumbra = 0.4;
+    spot2.castShadow = true;
+    scene.add(spot2);
+
+    // 바닥
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(80, 80),
+      new THREE.MeshStandardMaterial({ color: 0x111622, roughness: 0.85 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -3.2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    // 당구대 생성
+    const tableGroup = new THREE.Group();
+    scene.add(tableGroup);
+
+    const cloth = new THREE.Mesh(
+      new THREE.BoxGeometry(TABLE_W, 0.4, TABLE_L),
+      new THREE.MeshStandardMaterial({ color: 0x0f6b43, roughness: 0.75 })
+    );
+    cloth.position.y = -0.2;
+    cloth.receiveShadow = true;
+    tableGroup.add(cloth);
+
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a2511, roughness: 0.4 });
+    const frameLongGeo = new THREE.BoxGeometry(0.8, 0.9, TABLE_L + 1.6);
+    const frameShortGeo = new THREE.BoxGeometry(TABLE_W + 1.6, 0.9, 0.8);
+
+    [
+      { geo: frameLongGeo, pos: [-TABLE_W / 2 - 0.4, 0.05, 0] },
+      { geo: frameLongGeo, pos: [TABLE_W / 2 + 0.4, 0.05, 0] },
+      { geo: frameShortGeo, pos: [0, 0.05, -TABLE_L / 2 - 0.4] },
+      { geo: frameShortGeo, pos: [0, 0.05, TABLE_L / 2 + 0.4] }
+    ].forEach(f => {
+      const m = new THREE.Mesh(f.geo, woodMat);
+      m.position.set(...f.pos);
+      m.castShadow = true;
+      tableGroup.add(m);
+    });
+
+    const legGeo = new THREE.CylinderGeometry(0.45, 0.35, 3.2, 16);
+    [[-4.5, -9], [4.5, -9], [-4.5, 9], [4.5, 9]].forEach(([lx, lz]) => {
+      const leg = new THREE.Mesh(legGeo, woodMat);
+      leg.position.set(lx, -1.6, lz);
+      tableGroup.add(leg);
+    });
+
+    const pockets = [
+      { x: -TABLE_W / 2, z: -TABLE_L / 2 },
+      { x:  TABLE_W / 2, z: -TABLE_L / 2 },
+      { x: -TABLE_W / 2, z: 0 },
+      { x:  TABLE_W / 2, z: 0 },
+      { x: -TABLE_W / 2, z:  TABLE_L / 2 },
+      { x:  TABLE_W / 2, z:  TABLE_L / 2 }
+    ];
+    const pocketGeo = new THREE.CylinderGeometry(POCKET_R, POCKET_R, 0.45, 24);
+    const pocketMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+    pockets.forEach(p => {
+      const hole = new THREE.Mesh(pocketGeo, pocketMat);
+      hole.position.set(p.x, -0.18, p.z);
+      tableGroup.add(hole);
+    });
+
+    // 공 번호 텍스처
+    const BALL_COLORS = {
+      0: '#ffffff',
+      1: '#eab308', 2: '#2563eb', 3: '#dc2626', 4: '#7c3aed',
+      5: '#ea580c', 6: '#16a34a', 7: '#991b1b', 8: '#111827',
+      9: '#eab308', 10: '#2563eb', 11: '#dc2626', 12: '#7c3aed',
+      13: '#ea580c', 14: '#16a34a', 15: '#991b1b'
+    };
+
+    function createBallTexture(num) {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 128;
+      const ctx = c.getContext('2d');
+
+      if (num === 0) {
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(0, 0, 256, 128);
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(64, 64, 8, 0, Math.PI * 2);
+        ctx.arc(192, 64, 8, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (num <= 8) {
+        ctx.fillStyle = BALL_COLORS[num];
+        ctx.fillRect(0, 0, 256, 128);
+      } else {
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(0, 0, 256, 128);
+        ctx.fillStyle = BALL_COLORS[num];
+        ctx.fillRect(0, 32, 256, 64);
+      }
+
+      if (num > 0) {
+        [64, 192].forEach(cx => {
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(cx, 64, 22, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = '#0f172a';
+          ctx.font = 'bold 22px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(num), cx, 65);
+        });
+      }
+      return new THREE.CanvasTexture(c);
+    }
+
+    // 3D 플레이어 캐릭터 (턴에 따라 셔츠 색상 변경: 1P=블루/다크, 2P=레드)
+    const playerGroup = new THREE.Group();
+    scene.add(playerGroup);
+
+    const torsoMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.6 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xf1c27d, roughness: 0.5 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.8 });
+
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.0, 0.85), torsoMat);
+    torso.position.set(0, 1.3, 2.3);
+    torso.rotation.x = 0.68;
+    torso.castShadow = true;
+    playerGroup.add(torso);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.45, 20, 20), skinMat);
+    head.position.set(0, 2.15, 1.5);
+    head.castShadow = true;
+    playerGroup.add(head);
+
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.47, 20, 20, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat);
+    hair.position.set(0, 2.18, 1.52);
+    playerGroup.add(hair);
+
+    const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.12, 1.6, 12), skinMat);
+    leftArm.position.set(-0.55, 0.85, 1.35);
+    leftArm.rotation.set(1.15, 0, -0.32);
+    playerGroup.add(leftArm);
+
+    const bridgeHand = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), skinMat);
+    bridgeHand.position.set(-0.15, 0.25, 0.9);
+    playerGroup.add(bridgeHand);
+
+    const strokeGroup = new THREE.Group();
+    playerGroup.add(strokeGroup);
+
+    const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.13, 1.5, 12), skinMat);
+    rightArm.position.set(0.55, 1.15, 2.55);
+    rightArm.rotation.set(0.4, 0, 0.25);
+    strokeGroup.add(rightArm);
+
+    const gripHand = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), skinMat);
+    gripHand.position.set(0.12, 0.72, 3.1);
+    strokeGroup.add(gripHand);
+
+    const cueGroup = new THREE.Group();
+    const cueButt = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.09, 2.8, 16),
+      new THREE.MeshStandardMaterial({ color: 0x3b1d0e, roughness: 0.3 })
+    );
+    cueButt.rotation.x = Math.PI / 2;
+    cueButt.position.z = 2.8;
+
+    const cueShaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.032, 0.06, 3.0, 16),
+      new THREE.MeshStandardMaterial({ color: 0xf5deb3, roughness: 0.35 })
+    );
+    cueShaft.rotation.x = Math.PI / 2;
+    cueShaft.position.z = -0.1;
+
+    const cueTip = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.032, 0.032, 0.08, 16),
+      new THREE.MeshBasicMaterial({ color: 0x0284c7 })
+    );
+    cueTip.rotation.x = Math.PI / 2;
+    cueTip.position.z = -1.62;
+
+    cueGroup.add(cueButt, cueShaft, cueTip);
+    cueGroup.position.set(0, 0.42, 2.15);
+    cueGroup.rotation.x = -0.07;
+    strokeGroup.add(cueGroup);
+
+    // 조준 가이드 라인
+    const aimLineGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0.1, 0),
+      new THREE.Vector3(0, 0.1, -12)
+    ]);
+    const aimLine = new THREE.Line(
+      aimLineGeo,
+      new THREE.LineDashedMaterial({ color: 0x38bdf8, dashSize: 0.35, gapSize: 0.2, transparent: true, opacity: 0.85 })
+    );
+    aimLine.computeLineDistances();
+    scene.add(aimLine);
+
+    // 공 관리
+    let balls = [];
+    const sphereGeo = new THREE.SphereGeometry(BALL_R, 28, 28);
+
+    function createBall(num, x, z) {
+      const mat = new THREE.MeshStandardMaterial({
+        map: createBallTexture(num),
+        roughness: 0.18,
+        metalness: 0.08
+      });
+      const mesh = new THREE.Mesh(sphereGeo, mat);
+      mesh.position.set(x, BALL_R, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return { num, mesh, x, z, vx: 0, vz: 0, pocketed: false };
+    }
+
+    let gameState = 'AIM'; // AIM, SHOOTING, MOVING
+    let aimAngle = 0;
+    let shotPower = 0;
+    let isTopView = false;
+    let strokeAnimProgress = 0;
+
+    function showBanner(msg, duration = 1600) {
+      centerBanner.textContent = msg;
+      centerBanner.classList.add('show');
+      if (duration > 0) {
+        setTimeout(() => centerBanner.classList.remove('show'), duration);
+      }
+    }
+
+    function canControlNow() {
+      if (gameOver || gameState !== 'AIM') return false;
+      if (!isMultiplayer) return true;
+      return currentTurn === myRole;
+    }
+
+    function updateTurnUI() {
+      // 캐릭터 셔츠 색상 변경 (1P=블루, 2P=레드)
+      torsoMat.color.setHex(currentTurn === 'P1' ? 0x1d4ed8 : 0xdc2626);
+
+      p1Badge.classList.toggle('active-turn', currentTurn === 'P1');
+      p2Badge.classList.toggle('active-turn', currentTurn === 'P2');
+
+      const formatGroup = (g) => {
+        if (!g) return '배정 전';
+        return g === 'SOLID' ? '🟡 솔리드 (1~7)' : '🔴 스트라이프 (9~15)';
+      };
+      p1GroupEl.textContent = formatGroup(playerGroups.P1);
+      p2GroupEl.textContent = formatGroup(playerGroups.P2);
+
+      if (!isMultiplayer) {
+        p1NameEl.textContent = '연습 모드 (1P)';
+        p2NameEl.textContent = '프리 플레이';
+        turnPill.textContent = '내 턴';
+        turnPill.className = 'turn-pill my-turn';
+        controlGuide.textContent = '좌우 드래그: 조준 | 아래로 당기기: 파워';
+        return;
+      }
+
+      p1NameEl.textContent = myRole === 'P1' ? '나 (1P)' : '친구 (1P)';
+      p2NameEl.textContent = myRole === 'P2' ? '나 (2P)' : '친구 (2P)';
+
+      if (gameOver) {
+        turnPill.textContent = '게임 종료';
+        turnPill.className = 'turn-pill';
+        return;
+      }
+
+      if (currentTurn === myRole) {
+        turnPill.textContent = '내 턴 (조준)';
+        turnPill.className = 'turn-pill my-turn';
+        controlGuide.textContent = '좌우 드래그: 조준 | 아래로 당기기: 파워';
+      } else {
+        turnPill.textContent = '상대방 턴...';
+        turnPill.className = 'turn-pill';
+        controlGuide.textContent = '상대방이 조준하고 있습니다';
+      }
+    }
+
+    function setupRack() {
+      balls.forEach(b => scene.remove(b.mesh));
+      balls = [];
+      pocketedList.innerHTML = '';
+
+      balls.push(createBall(0, 0, 5.2));
+
+      const order = [1, 9, 2, 10, 8, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15];
+      let idx = 0;
+      const startZ = -4.2;
+      const rowStep = BALL_R * 1.76;
+      const colStep = BALL_R * 2.04;
+
+      for (let row = 0; row < 5; row++) {
+        const count = row + 1;
+        const z = startZ - row * rowStep;
+        const startX = -((count - 1) * colStep) / 2;
+        for (let c = 0; c < count; c++) {
+          balls.push(createBall(order[idx++], startX + c * colStep, z));
+        }
+      }
+
+      aimAngle = 0;
+      shotPower = 0;
+      currentTurn = 'P1';
+      playerGroups = { P1: null, P2: null };
+      turnPocketedBalls = [];
+      cueBallPocketedThisTurn = false;
+      gameOver = false;
+      gameState = 'AIM';
+      rematchBtn.style.display = 'none';
+      centerBanner.classList.remove('show');
+      updatePowerUI(0);
+      updateTurnUI();
+    }
+
+    function updatePowerUI(p) {
+      const pct = Math.round(p * 100);
+      powerFill.style.width = pct + '%';
+      powerValue.textContent = pct + '%';
+    }
+
+    function renderPocketedBadges() {
+      pocketedList.innerHTML = '';
+      balls.filter(b => b.num > 0 && b.pocketed).forEach(b => {
+        const dot = document.createElement('div');
+        dot.className = 'ball-dot';
+        dot.style.background = BALL_COLORS[b.num];
+        dot.textContent = b.num;
+        pocketedList.appendChild(dot);
+      });
+    }
+
+    // 턴 종료 후 8볼 룰 판정 (Host 또는 솔로 플레이어 기준 처리 후 동기화)
+    function evaluateTurnEnd() {
+      const shooter = currentTurn;
+      const opponent = shooter === 'P1' ? 'P2' : 'P1';
+      const eightBallPocketed = turnPocketedBalls.includes(8);
+      const objectBalls = turnPocketedBalls.filter(n => n !== 8);
+
+      // 1. 8번 공이 들어간 경우 승패 결정
+      if (eightBallPocketed) {
+        gameOver = true;
+        const myGroup = playerGroups[shooter];
+        const remainingMyBalls = balls.filter(b => {
+          if (b.pocketed || b.num === 0 || b.num === 8) return false;
+          if (myGroup === 'SOLID') return b.num >= 1 && b.num <= 7;
+          if (myGroup === 'STRIPE') return b.num >= 9 && b.num <= 15;
+          return true;
+        });
+
+        let winner = shooter;
+        let reason = '8번 볼 포켓 성공!';
+        if (!myGroup || remainingMyBalls.length > 0 || cueBallPocketedThisTurn) {
+          winner = opponent;
+          reason = cueBallPocketedThisTurn ? '파울! 수구와 8번 볼 동시 포켓' : '파울! 8번 볼 조기 포켓';
+        }
+
+        const winText = !isMultiplayer
+          ? `${reason}`
+          : (winner === myRole ? `🎉 승리! (${reason})` : `😢 패배 (${reason})`);
+        showBanner(winText, 0);
+        rematchBtn.style.display = 'inline-block';
+        updateTurnUI();
+        return;
+      }
+
+      // 2. 그룹 배정 (아직 미배정 상태이고 파울 없이 공을 넣었을 때)
+      let keepTurn = false;
+      if (!playerGroups.P1 && objectBalls.length > 0 && !cueBallPocketedThisTurn) {
+        const firstBall = objectBalls[0];
+        if (firstBall <= 7) {
+          playerGroups[shooter] = 'SOLID';
+          playerGroups[opponent] = 'STRIPE';
+        } else {
+          playerGroups[shooter] = 'STRIPE';
+          playerGroups[opponent] = 'SOLID';
+        }
+        keepTurn = true;
+      } else if (playerGroups[shooter] && objectBalls.length > 0 && !cueBallPocketedThisTurn) {
+        const myGroup = playerGroups[shooter];
+        const hitMine = objectBalls.some(n => (myGroup === 'SOLID' ? n <= 7 : n >= 9));
+        if (hitMine) keepTurn = true;
+      }
+
+      if (!isMultiplayer) {
+        currentTurn = 'P1';
+      } else {
+        if (!keepTurn) {
+          currentTurn = opponent;
+        }
+      }
+
+      turnPocketedBalls = [];
+      cueBallPocketedThisTurn = false;
+      shotPower = 0;
+      gameState = 'AIM';
+      updateTurnUI();
+
+      if (isMultiplayer) {
+        if (cueBallPocketedThisTurn) {
+          showBanner('파울! 턴 교대', 1200);
+        } else if (currentTurn === myRole) {
+          showBanner(keepTurn ? '연속 샷! 🔥' : '내 턴입니다!', 1100);
+        }
+      }
+    }
+
+    // PeerJS P2P 연결 초기화
+    function generateCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let res = '';
+      for (let i = 0; i < 4; i++) res += chars[Math.floor(Math.random() * chars.length)];
+      return res;
+    }
+
+    function sendNet(data) {
+      if (conn && conn.open) {
+        conn.send(data);
+      }
+    }
+
+    function setupConnection(connection, role) {
+      conn = connection;
+      myRole = role;
+      isMultiplayer = true;
+
+      conn.on('open', () => {
+        lobbyOverlay.style.display = 'none';
+        roomTag.textContent = `ROOM: ${myRoomCodeEl.textContent}`;
+        setupRack();
+        if (myRole === 'P1') {
+          showBanner('친구 입장! 1P 선공', 1500);
+        } else {
+          showBanner('입장 완료! 1P 샷 대기', 1500);
+        }
+      });
+
+      conn.on('data', (msg) => {
+        if (msg.type === 'AIM') {
+          if (gameState === 'AIM') {
+            aimAngle = msg.aimAngle;
+            shotPower = msg.shotPower;
+            updatePowerUI(shotPower);
+          }
+        } else if (msg.type === 'SHOT') {
+          aimAngle = msg.aimAngle;
+          shotPower = msg.shotPower;
+          gameState = 'SHOOTING';
+          strokeAnimProgress = 0;
+        } else if (msg.type === 'SYNC_STATE') {
+          // 공이 멈춘 후 좌표 및 턴 상태를 완벽히 동기화
+          msg.balls.forEach((sb, i) => {
+            balls[i].x = sb.x;
+            balls[i].z = sb.z;
+            balls[i].vx = 0;
+            balls[i].vz = 0;
+            balls[i].pocketed = sb.pocketed;
+            balls[i].mesh.visible = !sb.pocketed;
+            balls[i].mesh.position.set(sb.x, BALL_R, sb.z);
+          });
+          currentTurn = msg.currentTurn;
+          playerGroups = msg.playerGroups;
+          gameOver = msg.gameOver;
+          gameState = 'AIM';
+          shotPower = 0;
+          updatePowerUI(0);
+          renderPocketedBadges();
+          updateTurnUI();
+
+          if (msg.banner) showBanner(msg.banner, msg.gameOver ? 0 : 1200);
+          if (msg.gameOver) rematchBtn.style.display = 'inline-block';
+        } else if (msg.type === 'REMATCH') {
+          setupRack();
+          showBanner('재대결 시작!', 1200);
+        }
+      });
+
+      conn.on('close', () => {
+        showBanner('상대방 연결이 끊어졌습니다', 0);
+        rematchBtn.style.display = 'none';
+      });
+    }
+
+    function initPeer() {
+      const code = generateCode();
+      myRoomCodeEl.textContent = code;
+      peer = new Peer(ROOM_PREFIX + code);
+
+      peer.on('open', () => {
+        lobbyStatus.textContent = '대기 중: 친구에게 코드를 공유하거나 상대 코드를 입력하세요.';
+      });
+
+      peer.on('connection', (incomingConn) => {
+        setupConnection(incomingConn, 'P1');
+      });
+
+      peer.on('error', (err) => {
+        lobbyStatus.textContent = '연결 오류: 코드를 다시 확인해주세요. (' + err.type + ')';
+      });
+    }
+
+    copyCodeBtn.addEventListener('click', () => {
+      navigator.clipboard?.writeText(myRoomCodeEl.textContent);
+      copyCodeBtn.textContent = '복사됨!';
+      setTimeout(() => copyCodeBtn.textContent = '복사', 1500);
+    });
+
+    joinBtn.addEventListener('click', () => {
+      const targetCode = joinCodeInput.value.trim().toUpperCase();
+      if (targetCode.length !== 4) {
+        lobbyStatus.textContent = '4자리 방 코드를 입력해주세요.';
+        return;
+      }
+      lobbyStatus.textContent = `${targetCode} 방에 접속 중...`;
+      myRoomCodeEl.textContent = targetCode;
+      const outConn = peer.connect(ROOM_PREFIX + targetCode, { reliable: true });
+      setupConnection(outConn, 'P2');
+    });
+
+    soloPracticeBtn.addEventListener('click', () => {
+      isMultiplayer = false;
+      lobbyOverlay.style.display = 'none';
+      roomTag.textContent = 'SOLO PRACTICE';
+      setupRack();
+    });
+
+    lobbyBtn.addEventListener('click', () => {
+      lobbyOverlay.style.display = 'flex';
+    });
+
+    rematchBtn.addEventListener('click', () => {
+      setupRack();
+      if (isMultiplayer) sendNet({ type: 'REMATCH' });
+    });
+
+    // 터치 / 마우스 조준 및 샷 조작
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startAimAngle = 0;
+
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      if (!canControlNow()) return;
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startAimAngle = aimAngle;
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      if (!isDragging || !canControlNow()) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      aimAngle = startAimAngle - dx * 0.0065;
+      shotPower = dy > 10 ? Math.min(1, (dy - 10) / 150) : 0;
+      updatePowerUI(shotPower);
+
+      // 상대 화면에도 조준 각도/당김 실시간 전송 (약 25fps 제한)
+      const now = performance.now();
+      if (isMultiplayer && now - lastAimSyncTime > 40) {
+        lastAimSyncTime = now;
+        sendNet({ type: 'AIM', aimAngle, shotPower });
+      }
+    });
+
+    window.addEventListener('pointerup', () => {
+      if (!isDragging || !canControlNow()) return;
+      isDragging = false;
+
+      if (shotPower > 0.08) {
+        gameState = 'SHOOTING';
+        strokeAnimProgress = 0;
+        if (isMultiplayer) {
+          sendNet({ type: 'SHOT', aimAngle, shotPower });
+        }
+      } else {
+        shotPower = 0;
+        updatePowerUI(0);
+        if (isMultiplayer) sendNet({ type: 'AIM', aimAngle, shotPower: 0 });
+      }
+    });
+
+    camToggleBtn.addEventListener('click', () => {
+      isTopView = !isTopView;
+      camToggleBtn.textContent = isTopView ? '3D 시점' : '탑뷰';
+    });
+
+    // 물리 시뮬레이션
+    function updatePhysics() {
+      const cueBall = balls[0];
+      if (!cueBall) return;
+
+      if (gameState === 'AIM') {
+        playerGroup.visible = !gameOver;
+        aimLine.visible = !gameOver;
+
+        playerGroup.position.set(cueBall.x, 0, cueBall.z);
+        playerGroup.rotation.y = aimAngle;
+        strokeGroup.position.z = shotPower * 1.45;
+
+        const dirX = -Math.sin(aimAngle);
+        const dirZ = -Math.cos(aimAngle);
+        const positions = aimLine.geometry.attributes.position.array;
+        positions[0] = cueBall.x;
+        positions[1] = BALL_R;
+        positions[2] = cueBall.z;
+        positions[3] = cueBall.x + dirX * 14;
+        positions[4] = BALL_R;
+        positions[5] = cueBall.z + dirZ * 14;
+        aimLine.geometry.attributes.position.needsUpdate = true;
+        aimLine.computeLineDistances();
+      }
+
+      if (gameState === 'SHOOTING') {
+        strokeAnimProgress += 0.22;
+        strokeGroup.position.z = shotPower * 1.45 * (1 - strokeAnimProgress) - 0.35 * strokeAnimProgress;
+
+        if (strokeAnimProgress >= 1) {
+          const speed = 0.12 + shotPower * 0.58;
+          cueBall.vx = -Math.sin(aimAngle) * speed;
+          cueBall.vz = -Math.cos(aimAngle) * speed;
+
+          turnPocketedBalls = [];
+          cueBallPocketedThisTurn = false;
+          gameState = 'MOVING';
+          aimLine.visible = false;
+          strokeGroup.position.z = 0;
+          updatePowerUI(0);
+        }
+      }
+
+      if (gameState === 'MOVING') {
+        let anyMoving = false;
+        const subSteps = 4;
+
+        for (let step = 0; step < subSteps; step++) {
+          for (let i = 0; i < balls.length; i++) {
+            const b = balls[i];
+            if (b.pocketed) continue;
+
+            b.x += b.vx / subSteps;
+            b.z += b.vz / subSteps;
+
+            for (const p of pockets) {
+              if (Math.hypot(b.x - p.x, b.z - p.z) < POCKET_R * 0.92) {
+                if (b.num === 0) {
+                  b.x = 0;
+                  b.z = 5.2;
+                  b.vx = 0;
+                  b.vz = 0;
+                  cueBallPocketedThisTurn = true;
+                } else {
+                  b.pocketed = true;
+                  b.vx = 0;
+                  b.vz = 0;
+                  b.mesh.visible = false;
+                  turnPocketedBalls.push(b.num);
+                  renderPocketedBadges();
+                }
+                break;
+              }
+            }
+
+            if (b.pocketed) continue;
+
+            const limitX = TABLE_W / 2 - BALL_R;
+            const limitZ = TABLE_L / 2 - BALL_R;
+            if (b.x < -limitX) { b.x = -limitX; b.vx = -b.vx * 0.85; }
+            if (b.x > limitX)  { b.x = limitX;  b.vx = -b.vx * 0.85; }
+            if (b.z < -limitZ) { b.z = -limitZ; b.vz = -b.vz * 0.85; }
+            if (b.z > limitZ)  { b.z = limitZ;  b.vz = -b.vz * 0.85; }
+          }
+
+          for (let i = 0; i < balls.length; i++) {
+            const b1 = balls[i];
+            if (b1.pocketed) continue;
+            for (let j = i + 1; j < balls.length; j++) {
+              const b2 = balls[j];
+              if (b2.pocketed) continue;
+
+              const dx = b2.x - b1.x;
+              const dz = b2.z - b1.z;
+              const dist = Math.hypot(dx, dz);
+              const minDist = BALL_R * 2;
+
+              if (dist < minDist && dist > 0) {
+                const nx = dx / dist;
+                const nz = dz / dist;
+                const overlap = (minDist - dist) * 0.5;
+                b1.x -= nx * overlap;
+                b1.z -= nz * overlap;
+                b2.x += nx * overlap;
+                b2.z += nz * overlap;
+
+                const dvx = b1.vx - b2.vx;
+                const dvz = b1.vz - b2.vz;
+                const dot = dvx * nx + dvz * nz;
+                if (dot > 0) {
+                  const impulse = dot * 0.94;
+                  b1.vx -= impulse * nx;
+                  b1.vz -= impulse * nz;
+                  b2.vx += impulse * nx;
+                  b2.vz += impulse * nz;
+                }
+              }
+            }
+          }
+        }
+
+        for (const b of balls) {
+          if (b.pocketed) continue;
+          b.mesh.position.set(b.x, BALL_R, b.z);
+          if (Math.hypot(b.vx, b.vz) > 0.0015) {
+            anyMoving = true;
+            b.mesh.rotation.x -= b.vz * 1.6;
+            b.mesh.rotation.z += b.vx * 1.6;
+            b.vx *= 0.986;
+            b.vz *= 0.986;
+          } else {
+            b.vx = 0;
+            b.vz = 0;
+          }
+        }
+
+        if (!anyMoving) {
+          // 샷을 친 플레이어(또는 방장)가 최종 좌표와 턴 판정을 동기화
+          const wasMyShot = !isMultiplayer || currentTurn === myRole;
+          if (wasMyShot) {
+            evaluateTurnEnd();
+            if (isMultiplayer) {
+              sendNet({
+                type: 'SYNC_STATE',
+                balls: balls.map(b => ({ x: b.x, z: b.z, pocketed: b.pocketed })),
+                currentTurn,
+                playerGroups,
+                gameOver,
+                banner: gameOver ? centerBanner.textContent : null
+              });
+            }
+          } else {
+            // 상대 샷이 끝난 경우 SYNC_STATE 패킷 수신 대기
+            gameState = 'AIM';
+          }
+        }
+      }
+
+      // 카메라 이동
+      const targetCamPos = new THREE.Vector3();
+      const lookAtTarget = new THREE.Vector3(0, 0, 0);
+
+      if (isTopView) {
+        targetCamPos.set(0, 27, 0.1);
+      } else if (gameState === 'AIM' || gameState === 'SHOOTING') {
+        const backDist = 6.2;
+        targetCamPos.set(
+          cueBall.x + Math.sin(aimAngle) * backDist,
+          3.4,
+          cueBall.z + Math.cos(aimAngle) * backDist
+        );
+        lookAtTarget.set(
+          cueBall.x - Math.sin(aimAngle) * 4.5,
+          0.3,
+          cueBall.z - Math.cos(aimAngle) * 4.5
+        );
+      } else {
+        targetCamPos.set(11, 13, 12);
+      }
+
+      camera.position.lerp(targetCamPos, 0.08);
+      camera.lookAt(lookAtTarget);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      updatePhysics();
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    initPeer();
+    setupRack();
+    animate();
+  })();
+  </script>
+</body>
+</html>
